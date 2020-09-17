@@ -27,10 +27,7 @@ FactoryGirl.define do
       after :create do |user|
         pf = user.profile_fields.create(type: ProfileFields::Address.name)
         pf.postal_address = true
-        pf.first_address_line = "Pariser Platz 1"
-        pf.postal_code = "10117"
-        pf.city = "Berlin"
-        pf.country_code = "DE"
+        pf.value = "Pariser Platz 1\n10117 Berlin"
         pf.save
       end
     end
@@ -87,7 +84,9 @@ FactoryGirl.define do
     # user with associated user account
     #
     factory :user_with_account do
-      create_account true
+      after :create do |user|
+        user.activate_account
+      end
     end
 
     # global administrator
@@ -95,9 +94,8 @@ FactoryGirl.define do
     # TODO: Remove this when ready!
     #
     factory :admin do
-      create_account true
-
       after :create do |admin|
+        admin.activate_account
         Group.find_everyone_group.assign_admin admin
       end
     end
@@ -106,9 +104,9 @@ FactoryGirl.define do
       transient do
         of nil  # syntax: create(:local_admin, of: @group)
       end
-      create_account true
       after :create do |admin, evaluator|
         raise 'Please set object to administrate, e.g.:  create :local_admin, of: @group' unless evaluator.of.respond_to?(:admins)
+        admin.activate_account
         evaluator.of.assign_admin admin
       end
     end

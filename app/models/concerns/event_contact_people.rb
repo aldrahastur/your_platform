@@ -17,8 +17,19 @@ concern :EventContactPeople do
   def contact_people
     contact_people_group.members
   end
+  def contact_people=(users)
+    contact_people_group.members = users
+  end
   def contact_person
     contact_people.first
+  end
+
+  # Used by /api/v1/events
+  def contact_name
+    contact_person.try(:title)
+  end
+  def contact_id
+    contact_person.try(:id)
   end
 
   def destroy

@@ -52,8 +52,8 @@ describe IncomingMails::GroupMailingListMail do
         last_email.subject.should include 'Great news for all developers!'
         last_email.body.should include 'Free drinks this evening!'
       end
-      it 'does not create any post' do
-        expect { subject }.not_to change { Post.count }
+      pending 'does create a post' do
+        expect { subject }.to change { Post.count }.by 1
       end
       it 'does not raise an error' do
         expect { subject }.not_to raise_error
@@ -84,7 +84,25 @@ describe IncomingMails::GroupMailingListMail do
         it_behaves_like 'forwarding the message'
         describe "when the group has no members" do
           before { @member.destroy }
-          it_behaves_like "nothing to do"
+          it 'does not send any email' do
+            expect { subject }.not_to change { ActionMailer::Base.deliveries.count }
+          end
+          pending 'does create a post' do
+            expect { subject }.to change { Post.count }.by 1
+          end
+          it 'does not raise an error' do
+            expect { subject }.not_to raise_error
+          end
+        end
+
+        pending "creates a post" do
+          subject
+          post = @group.posts.last
+          post.author.should == @user
+          post.title.should == "Great news for all developers!"
+          post.message_id.should == "579b28a0a60e2_5ccb3ff56d4319d8918bc@example.com"
+          post.text.should include "Free drinks this evening!"
+          post.sent_via.should == "all-developers@example.com"
         end
       end
     end
@@ -123,6 +141,11 @@ describe IncomingMails::GroupMailingListMail do
       it 'forwards the mail with 🍕' do
         subject
         last_email.body_in_utf8.should include '🍕'
+      end
+      pending 'creates a post with 🍕' do
+        subject
+        post = @group.posts.last
+        post.text.should include "🍕"
       end
     end
 
@@ -188,6 +211,13 @@ describe IncomingMails::GroupMailingListMail do
             last_email.to_s.should include "Dear #{@member.name}!"
             last_email.to_s.should_not include "{{greeting}}"
           end
+        end
+
+        pending "creates a post with attachment" do
+          subject
+          attachment = @group.posts.last.attachments.first
+          attachment.filename.should == "pdf-upload.pdf"
+          attachment.content_type.should == "application/pdf"
         end
       end
 
@@ -528,6 +558,113 @@ describe IncomingMails::GroupMailingListMail do
           subject
           last_email.to_s.should include "Dear #{@member.name}!"
           last_email.to_s.should_not include "{{greeting}}"
+        end
+      end
+    end
+
+    describe "when the recipient group has a name" do
+      before do
+        @group.name = "All Developers"
+        @group.mailing_list_sender_filter = :open
+        @group.save
+      end
+      describe "when the group is the sole 'To' recipient" do
+        it "injects the recipient-group name into the To field" do
+          subject
+          last_email["To"].to_s.should include "All Developers"
+        end
+      end
+      describe "when the 'To' recipient has already a formatted name" do
+        let(:example_raw_message) { %{
+          From: john@example.com
+          To: Developers <all-developers@example.com>
+          Subject: Great news for all developers!
+          X-Original-To: all-developers@example.com
+          Message-ID: <579b28a0a60e2_5ccb3ff56d4319d8918bc@example.com>
+
+          Free drinks this evening!
+        }.gsub("  ", "") }
+        it "rewrites the field" do
+          subject
+          last_email["To"].to_s.should include "All Developers"
+        end
+      end
+      describe "when the 'To' recipient has already a formatted name with a comma" do
+        let(:example_raw_message) { %{
+          From: john@example.com
+          To: "Developers, All" <all-developers@example.com>
+          Subject: Great news for all developers!
+          X-Original-To: all-developers@example.com
+          Message-ID: <579b28a0a60e2_5ccb3ff56d4319d8918bc@example.com>
+
+          Free drinks this evening!
+        }.gsub("  ", "") }
+        it "rewrites the field" do
+          subject
+          last_email["To"].to_s.should include "All Developers"
+          last_email["To"].to_s.should_not include "Developers, All"
+        end
+      end
+      describe "when the group is one of two 'To' recipients" do
+        let(:example_raw_message) { %{
+          From: john@example.com
+          To: all-developers@example.com, foo@example.com
+          Subject: Great news for all developers!
+          X-Original-To: all-developers@example.com
+          Message-ID: <579b28a0a60e2_5ccb3ff56d4319d8918bc@example.com>
+
+          Free drinks this evening!
+        }.gsub("  ", "") }
+        it "injects the recipient-group name into the To field" do
+          subject
+          last_email["To"].to_s.should include "All Developers"
+          last_email["To"].to_s.should include "all-developers@example.com"
+          last_email["To"].to_s.should include "foo@example.com"
+        end
+      end
+      describe "when the group is one of two 'CC' recipients" do
+        let(:example_raw_message) { %{
+          From: john@example.com
+          To: foo@example.com
+          CC: bar@example.com, "Developers" <all-developers@example.com>
+          Subject: Great news for all developers!
+          X-Original-To: all-developers@example.com
+          Message-ID: <579b28a0a60e2_5ccb3ff56d4319d8918bc@example.com>
+
+          Free drinks this evening!
+        }.gsub("  ", "") }
+        it "injects the recipient-group name into the CC field" do
+          subject
+          last_email["CC"].to_s.should include "All Developers"
+          last_email["CC"].to_s.should include "all-developers@example.com"
+          last_email["CC"].to_s.should include "bar@example.com"
+        end
+        it "leaves the To field unchanged" do
+          subject
+          last_email["To"].to_s.should == Mail::Message.new(example_raw_message)["To"].to_s
+          last_email["To"].to_s.should_not include "all-developers@example.com"
+        end
+      end
+      describe "when the group is in the BCC field" do
+        let(:example_raw_message) { %{
+          From: john@example.com
+          To: foo@example.com
+          CC: "Bar" <bar@example.com>
+          Subject: Great news for all developers!
+          X-Original-To: all-developers@example.com
+          Message-ID: <579b28a0a60e2_5ccb3ff56d4319d8918bc@example.com>
+
+          Free drinks this evening!
+        }.gsub("  ", "") }
+        it "leaves the To field unchanged" do
+          subject
+          last_email["To"].to_s.should == Mail::Message.new(example_raw_message)["To"].to_s
+          last_email["To"].to_s.should_not include "all-developers@example.com"
+        end
+        it "leaves the CC field unchanged" do
+          subject
+          last_email["CC"].to_s.should == Mail::Message.new(example_raw_message)["CC"].to_s
+          last_email["CC"].to_s.should_not include "all-developers@example.com"
         end
       end
     end

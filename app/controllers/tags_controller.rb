@@ -8,8 +8,9 @@ class TagsController < ApplicationController
   end
 
   def update
-    @tag.update tag_params
-    respond_with_bip @tag
+    @tag.update! tag_params
+
+    render json: @tag, status: :ok
   end
 
   def edit
@@ -43,7 +44,8 @@ class TagsController < ApplicationController
   end
 
   def find_taggables
-    @pages = Page.visible_to(current_user).tagged_with(@tag.name).order(published_at: :desc)
+    @pages = Page.visible_to(current_user).tagged_with(@tag.name).order(published_at: :desc) if @tag
+    @pages ||= Page.none
     @taggables = @pages
 
     @taggables = @taggables.select { |taggable| can? :read, taggable }

@@ -1,6 +1,6 @@
 class Page < ApplicationRecord
 
-  has_dag_links ancestor_class_names: %w(Page User Group Event), descendant_class_names: %w(Page User Group Event), link_class_name: 'DagLink'
+  has_dag_links ancestor_class_names: %w(Page User Group Event), descendant_class_names: %w(Page User Group Event Post), link_class_name: 'DagLink'
   #after_save { parent.try(:touch) }  # This causes some specs to fail. TODO: Check if this is a spec issue or has destructive implications.
 
   acts_as_taggable
@@ -32,9 +32,8 @@ class Page < ApplicationRecord
   include PageFooter
   include PageAnalytics
 
-  scope :regular, -> {
-    where(type: nil)
-  }
+  scope :regular, -> { where(type: nil).not_flagged([:intranet_root]) }
+  scope :without_group, -> { includes(:ancestor_groups).where(groups: {id: nil}) }
 
   def not_empty?
     attachments.any? || (content && content.length > 5) || children.any?
